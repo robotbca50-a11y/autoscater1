@@ -751,18 +751,29 @@ async function webClaimDrain() {
 
 /* Isi form klaim web bonus (bonussmb.com/tickets) — port dari bg-secure.js (AUTO RELAX). */
 async function webClaimFillForm(formData, formUrl) {
-  let tab;
-  try {
-    tab = await safeTabCreate(formUrl || WEB_CLAIM_FORM_URL, { active: false });
-    await waitTab(tab.id, 20000); await sleep(1200);
-    const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimAutomateForm, args: [formData] });
-    const result = execResult?.result || null;
-    return result && typeof result === 'object' ? result : { ok: false, message: 'Form tidak merespons' };
-  } catch (err) {
-    return { ok: false, message: 'Tab Ticket terganggu silakan coba lagi' };
-  } finally {
-    if (tab?.id) { try { await closeTab(tab.id); } catch (_) {} }
+  const url = formUrl || WEB_CLAIM_FORM_URL;
+  let lastMsg = 'Form tidak merespons';
+  for (let n = 1; n <= 3; n++) {
+    let tab;
+    try {
+      tab = await safeTabCreate(url, { active: false });
+      await waitTab(tab.id, 25000); await sleep(1200);
+      const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimAutomateForm, args: [formData] });
+      const result = execResult?.result || null;
+      if (result && typeof result === 'object') {
+        if (result.ok) return result;
+        lastMsg = result.message || 'Form tidak merespons';
+      } else {
+        lastMsg = 'Form tidak merespons (coba ' + n + '/3)';
+      }
+    } catch (err) {
+      lastMsg = 'Tab Ticket terganggu: ' + String((err && err.message) || err) + ' (coba ' + n + '/3)';
+    } finally {
+      if (tab?.id) { try { await closeTab(tab.id); } catch (_) {} }
+    }
+    await sleep(1500);
   }
+  return { ok: false, message: lastMsg };
 }
 
 function webClaimAutomateForm(data) {
@@ -858,7 +869,7 @@ function webClaimAutomateForm(data) {
     const m = String(msg || '').toLowerCase();
     return !m.includes('gagal') && !m.includes('error') && !m.includes('tidak valid') && !m.includes('tidak ditemukan') && (m.includes('berhasil') || m.includes('sukses') || m.includes('tersimpan') || m.includes('masuk') || m.includes('klaim'));
   }
-  return (async () => {
+  return (async () => { try {
     await wait(1800);
     const openBtn = document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue || Array.from(document.querySelectorAll('button')).find(b => /tambah|klaim|new|create/i.test(b.textContent || '')) || null;
     if (!openBtn) return { ok: false, message: 'Tombol tambah klaim tidak ditemukan' };
@@ -891,6 +902,7 @@ function webClaimAutomateForm(data) {
     const toastMessage = await waitForToast();
     const finalMessage = toastMessage || 'Toast tidak terdeteksi';
     return { ok: isLikelySuccess(finalMessage), message: finalMessage };
+  } catch (errFill) { return { ok: false, message: 'Script form gagal: ' + String((errFill && errFill.message) || errFill) }; }
   })();
 }
 
