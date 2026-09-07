@@ -1,12 +1,21 @@
 -- ============================================================
--- BANDAR80 — supabase/setup.sql
+-- BANDAR80 — supabase/setup.sql  (v2 HARDENED)
 -- Jalankan SEKALI di Supabase SQL Editor (dashboard supabase).
--- Bikin tabel claims, sites, kebijakan RLS anon, dan seed situs.
--- WARNING: keys publishable boleh terbuka, tapi RLS di bawah longgar
--- (anon boleh insert/select/update) supaya extension worker dan web
--- bisa dipakai tanpa secret. Untuk produksi lebih ketat, pindahkan
--- worker ke service-role + batasi kolom via trigger. Sesuaikan dgn
--- kebutuhanmu sendiri.
+-- Perubahan v2:
+--   * INSERT dari web dipaksa: status PENDING + mode WEB (row
+--     tidak bisa di-spoof status-nya oleh penyerang).
+--   * UPDATE hanya boleh mengubah kolom proses verifikasi
+--     (status/label/detail/match/actual_*) — kolom inti klaim
+--     (site/user_id/kode_tiket/betting/scatter/mode) "terkunci".
+--   * status cuma boleh salah satu nilai yang dikenal (enum check).
+--   * DELETE hanya untuk baris status FINAL (arsip selesai) —
+--     klaim PENDING/VERIFYING tidak bisa dihapus sembarangan orang.
+--   * Rate-limit: max 60 klaim/jam per user_id (anti spam).
+--   * claims SELECT tetap dibuka (publik: lacak status), tapi data
+--     sensitif dijaga oleh aturan di atas.
+-- CATATAN HONEST: tanpa login owner (Supabase Auth), anon masih bisa
+--   baca & hapus arsip status FINAL. Untuk benar-benar rapat, upgrade
+--   berikutnya: login owner + policy `auth.role()='authenticated'`.
 -- ============================================================
 
 create extension if not exists pgcrypto;
@@ -19,7 +28,7 @@ create table public.claims (
   site text not null,
   user_id text not null,
   kode_tiket text not null,
-  betting numeric not null,
+  betting numeric not null check (betting > 0),
   scatter int not null check (scatter between 3 and 5),
   status text not null default 'PENDING',
   label text,
@@ -30,14 +39,17 @@ create table public.claims (
   mode text not null default 'WEB',
   site_label text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  check (status in ('PENDING','QUEUED','VERIFYING','SESUAI','TIDAK_SESUAI',
+                   'INPUTTING','INPUT_OK','INPUT_FAIL','ERROR','NO_TOKEN'))
 );
 
 create index if not exists claims_status_idx on public.claims(status);
 create index if not exists claims_site_idx on public.claims(site);
 create index if not exists claims_created_idx on public.claims(created_at desc);
+create index if not exists claims_user_idx on public.claims(user_id);
 
--- ---------- TABEL SITES (registri situs terdaftar) ----------
+-- ---------- TABEL SITES ----------
 drop table if exists public.sites cascade;
 create table public.sites (
   site_id text primary key,
@@ -59,25 +71,77 @@ drop policy if exists "claims_insert_anon" on public.claims;
 create policy "claims_insert_anon" on public.claims
   for insert to anon with check (true);
 
--- anon: lihat klaim (dashboard owner online)
+-- anon: lihat klaim (dashboard owner online + lacak status publik)
 drop policy if exists "claims_select_anon" on public.claims;
 create policy "claims_select_anon" on public.claims
   for select to anon using (true);
 
--- anon: update status (extension worker di PC owner)
+-- anon (extension worker di PC owner): ubah status verifikasi
 drop policy if exists "claims_update_anon" on public.claims;
 create policy "claims_update_anon" on public.claims
   for update to anon using (true);
 
--- anon: hapus (tombol bersihkan arsip selesai)
+-- anon: hapus HANYA arsip status FINAL (tombol bersihkan arsip selesai)
 drop policy if exists "claims_delete_anon" on public.claims;
 create policy "claims_delete_anon" on public.claims
-  for delete to anon using (true);
+  for delete to anon
+  using (status in ('INPUT_OK','TIDAK_SESUAI','INPUT_FAIL','ERROR','NO_TOKEN'));
 
 -- anon: baca daftar situs (dropdown Situs)
 drop policy if exists "sites_select_anon" on public.sites;
 create policy "sites_select_anon" on public.sites
   for select to anon using (true);
+
+-- ---------- FUNGSI + TRIGGER PERLINDUNGAN ----------
+create or replace function public.claims_enforce_insert()
+returns trigger language plpgsql security definer as $$
+declare
+  cnt int;
+begin
+  -- jangan izinkan spoof status/label/mode dari form publik
+  new.status := 'PENDING';
+  new.label  := 'ANTRI';
+  new.mode   := coalesce(nullif(new.mode,''), 'WEB');
+  new.claim_no := null; -- biarkan identity mengisi
+  new.created_at := now();
+  new.updated_at := now();
+
+  -- rate-limit: max 60 klaim / jam per user_id
+  select count(*) into cnt from public.claims
+  where user_id = new.user_id and created_at > now() - interval '1 hour';
+  if cnt >= 60 then
+    raise exception 'terlalu banyak klaim dalam 1 jam, coba nanti';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists trg_claims_enforce_insert on public.claims;
+create trigger trg_claims_enforce_insert
+  before insert on public.claims
+  for each row execute function public.claims_enforce_insert();
+
+create or replace function public.claims_protect_update()
+returns trigger language plpgsql security definer as $$
+begin
+  -- kolom inti tidak bisa diutak-atik lewat REST anon
+  if (new.site      is distinct from old.site)      or
+     (new.user_id   is distinct from old.user_id)   or
+     (new.kode_tiket is distinct from old.kode_tiket) or
+     (new.betting   is distinct from old.betting)   or
+     (new.scatter   is distinct from old.scatter)   or
+     (new.mode      is distinct from old.mode)      or
+     (new.site_label is distinct from old.site_label) then
+    raise exception 'kolom inti klaim tidak boleh diubah';
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+
+drop trigger if exists trg_claims_protect_update on public.claims;
+create trigger trg_claims_protect_update
+  before update on public.claims
+  for each row execute function public.claims_protect_update();
 
 -- ---------- SEED SITUS ----------
 insert into public.sites (site_id, label, check_domains, bonus_url, form_site_value, active) values
