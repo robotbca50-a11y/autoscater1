@@ -164,7 +164,7 @@ create trigger trg_claims_protect_update
 
 -- ---------- SEED SITUS ----------
 insert into public.sites (site_id, label, check_domains, bonus_url, form_site_value, active) values
-  ('bandar80', 'BANDAR80',          array['ag-bandar80.idrbo2.com','bandar80.idrbo2.com'], 'https://bonussmb.com/tickets', 'bandar80', true),
+  ('bandar80', 'BANDAR80',          array['bandar80.idrbo2.com'], 'https://bonussmb.com/tickets', 'bandar80', true),
   ('idrbo',    'IDRBO',             array['idrbo.com'],   null, 'idrbo',    false),
   ('idrbo1',   'IDRBO1',            array['idrbo1.com'],  null, 'idrbo1',   false),
   ('idrbo2',   'IDRBO2',            array['idrbo2.com'],  null, 'idrbo2',   false),
