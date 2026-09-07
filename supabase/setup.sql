@@ -8,14 +8,16 @@
 --     (status/label/detail/match/actual_*) — kolom inti klaim
 --     (site/user_id/kode_tiket/betting/scatter/mode) "terkunci".
 --   * status cuma boleh salah satu nilai yang dikenal (enum check).
---   * DELETE hanya untuk baris status FINAL (arsip selesai) —
---     klaim PENDING/VERIFYING tidak bisa dihapus sembarangan orang.
---   * Rate-limit: max 60 klaim/jam per user_id (anti spam).
+--   * Jam layanan klaim 00.00–23.50 WIB (10 menit terakhir untuk
+--     sistem ganti hari) + maksimal 2 klaim per user id/hari (WIB),
+--     reset otomatis tengah malam WIB.
+--   * DELETE anon hanya baris arsip selesai (INPUT_OK, TIDAK_SESUAI,
+--     INPUT_FAIL, ERROR, NO_TOKEN) — untuk tombol bersihkan arsip.
 --   * claims SELECT tetap dibuka (publik: lacak status), tapi data
 --     sensitif dijaga oleh aturan di atas.
 -- CATATAN HONEST: tanpa login owner (Supabase Auth), anon masih bisa
---   baca & hapus arsip status FINAL. Untuk benar-benar rapat, upgrade
---   berikutnya: login owner + policy `auth.role()='authenticated'`.
+--   baca seluruh klaim dan hapus baris arsip selesai. Untuk benar-benar
+--   rapat, upgrade berikutnya: login owner + policy auth.role()='authenticated'.
 -- ============================================================
 
 create extension if not exists pgcrypto;
