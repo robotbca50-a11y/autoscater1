@@ -2031,7 +2031,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         let gameId = '74';
         try { const gm = (url || '').match(/\/history\/(\d+)\.html/i); if (gm) gameId = gm[1]; } catch (_) {}
         const { adminUrl, sniffedFrom } = await getS(['adminUrl', 'sniffedFrom']);
-        const domain = getDomainFromUrl(adminUrl || sniffedFrom || 'ag-bandar80.idrbo2.com');
+        const domain = getDomainFromUrl(adminUrl || sniffedFrom || 'bandar80.idrbo2.com');
         const txShort = String(transactionId || '').slice(0, 19);
         let scatterTitle = 'Scatter tidak ditemukan';
         try {
@@ -2121,7 +2121,7 @@ setInterval(async () => {
     await setS({ historyToken: '', historyTokenAt: 0 });
     const { tokenAnchor: a, adminUrl: au, sniffedFrom: sf } = await getS(['tokenAnchor', 'adminUrl', 'sniffedFrom']);
     if (a?.userId && a?.transactionId) {
-      const domain = getDomainFromUrl(au || sf || 'ag-bandar80.idrbo2.com');
+      const domain = getDomainFromUrl(au || sf || 'bandar80.idrbo2.com');
       refreshHistoryTokenViaTab(a.userId, a.transactionId, '74', domain).catch(() => {});
     }
   }
@@ -2237,7 +2237,7 @@ chrome.action.onClicked.addListener(() => { try { chrome.tabs.create({ url: chro
       }
       const { tokenAnchor, adminUrl, sniffedFrom } = await getS(['tokenAnchor', 'adminUrl', 'sniffedFrom']);
       if (!tokenAnchor?.userId || !tokenAnchor?.transactionId) return;
-      const domain = getDomainFromUrl(adminUrl || sniffedFrom || 'ag-bandar80.idrbo2.com');
+      const domain = getDomainFromUrl(adminUrl || sniffedFrom || 'bandar80.idrbo2.com');
       await refreshHistoryTokenViaTab(tokenAnchor.userId, tokenAnchor.transactionId, '74', domain).catch(() => {});
       } catch (_) {}
     }, 60000);
