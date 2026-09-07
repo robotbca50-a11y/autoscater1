@@ -43,7 +43,7 @@ create table public.claims (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (status in ('PENDING','QUEUED','VERIFYING','SESUAI','TIDAK_SESUAI',
-                   'INPUTTING','INPUT_OK','INPUT_FAIL','ERROR','NO_TOKEN'))
+                   'INPUTTING','INPUT_OK','INPUT_FAIL','ERROR','NO_TOKEN','ID_SALAH'))
 );
 
 create index if not exists claims_status_idx on public.claims(status);
