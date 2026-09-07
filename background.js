@@ -548,35 +548,30 @@ async function klaimMainProcessor(payload) {
   const datesToTry = [targetDate];
   const td = new Date(targetDate);
   for (let i = 1; i <= 3; i++) { const prev = new Date(td); prev.setDate(prev.getDate() - i); datesToTry.push(prev.toISOString().slice(0, 10)); }
-  const wideFrom = new Date(td); wideFrom.setDate(wideFrom.getDate() - 30);
+  const wideFrom = new Date(td); wideFrom.setDate(wideFrom.getDate() - 60);
   datesToTry.push('wide:' + wideFrom.toISOString().slice(0, 10));
-  let lastFetchErr = null, matchedRecord = null, usedDomain;
+  let lastFetchErr = null, matchedRecord = null, usedDomain, triedLocs = [];
   const hdrs = { 'X-Access-Token': st.token, 'X-Agent-Pkid': st.pkid || '', 'X-Agent-Role': st.role || '', 'X-Agent-Suid': st.suid || '', 'X-Agent-User': st.userAgent || '', 'X-Agent-UserId': st.userid || '' };
+  const sidNorm = String(sId).trim();
   const tryFetchList = async (domain, tryDate) => {
-    let url;
-    if (tryDate.startsWith('wide:')) { const from = tryDate.slice(5); url = `https://${domain}/game-oc/ida/transaction/history/queryTransactionHistoryListForUser?userId=${encodeURIComponent(mId)}&pageNo=1&pageSize=300&startDate=${from}&endDate=${targetDate}&transactionId=${encodeURIComponent(sId)}`; }
-    else url = `https://${domain}/game-oc/ida/transaction/history/queryTransactionHistoryListForUser?userId=${encodeURIComponent(mId)}&pageNo=1&pageSize=300&startDate=${tryDate}&endDate=${tryDate}&transactionId=${encodeURIComponent(sId)}`;
-    const res = await fetch(url, { method: 'GET', headers: hdrs });
-    if (!res.ok) return { ok: false, status: res.status };
-    const rawText = await res.text();
-    let json; try { json = JSON.parse(rawText); } catch (_) { json = {}; }
-    if (klaimInvalidSessionMsg(json)) throw new Error('INVALID_OPERATOR_SESSION: ' + klaimInvalidSessionText(json));
-    let recs = klaimExtractRecords(json);
-    let found = recs.find(item => { const sid = String(klaimRecordSid(item) || '').trim(); return (sid === String(sId).trim() || sid.includes(String(sId).trim())) && klaimDebitValue(item) > 0; });
-    if (!found && recs.length >= 300) {
-      for (let pg = 2; pg <= 10 && !found; pg++) {
-        const pgUrl = `https://${domain}/game-oc/ida/transaction/history/queryTransactionHistoryListForUser?userId=${encodeURIComponent(mId)}&pageNo=${pg}&pageSize=300&startDate=${tryDate.startsWith('wide:') ? tryDate.slice(5) : tryDate}&endDate=${targetDate}&transactionId=`;
-        const pgRes = await fetch(pgUrl, { method: 'GET', headers: hdrs });
-        if (!pgRes.ok) break;
-        let pgJson; try { pgJson = await pgRes.json(); } catch (_) { break; }
-        if (klaimInvalidSessionMsg(pgJson)) throw new Error('INVALID_OPERATOR_SESSION: ' + klaimInvalidSessionText(pgJson));
-        const pgRecs = klaimExtractRecords(pgJson);
-        if (!pgRecs.length) break;
-        recs = recs.concat(pgRecs);
-        found = pgRecs.find(item => { const sid = String(klaimRecordSid(item) || '').trim(); return (sid === String(sId).trim() || sid.includes(String(sId).trim())) && klaimDebitValue(item) > 0; });
-      }
+    const wide = tryDate.startsWith('wide:');
+    const start = wide ? tryDate.slice(5) : tryDate;
+    const end = wide ? targetDate : tryDate;
+    const maxPages = wide ? 40 : 8;
+    triedLocs.push(domain + ' ' + (wide ? start + '..' + end : tryDate));
+    for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+      const url = `https://${domain}/game-oc/ida/transaction/history/queryTransactionHistoryListForUser?userId=${encodeURIComponent(mId)}&pageNo=${pageNo}&pageSize=300&startDate=${start}&endDate=${end}&transactionId=`;
+      const res = await fetch(url, { method: 'GET', headers: hdrs });
+      if (!res.ok) return { ok: false, status: res.status };
+      const rawText = await res.text();
+      let json; try { json = JSON.parse(rawText); } catch (_) { json = {}; }
+      if (klaimInvalidSessionMsg(json)) throw new Error('INVALID_OPERATOR_SESSION: ' + klaimInvalidSessionText(json));
+      const recs = klaimExtractRecords(json);
+      const found = recs.find(item => { const rs = String(klaimRecordSid(item) || '').trim(); return (rs === sidNorm || rs.includes(sidNorm)) && klaimDebitValue(item) > 0; });
+      if (found) return { ok: true, records: recs, matched: found };
+      if (!Array.isArray(recs) || recs.length < 300) break;
     }
-    return { ok: true, records: recs, matched: found || null };
+    return { ok: true, records: [], matched: null };
   };
   for (const domain of domainCandidates) {
     for (const tryDate of datesToTry) {
@@ -591,7 +586,11 @@ async function klaimMainProcessor(payload) {
     }
     if (matchedRecord) break;
   }
-  if (!matchedRecord) throw new Error(lastFetchErr || 'userId berbeda benar sedikit bos');
+  if (!matchedRecord) {
+    const e = new Error('userId berbeda benar sedikit bos');
+    e.exposeDetail = 'Tiket tidak ketemu untuk user id "' + String(mId) + '" — sudah dicari di: ' + (triedLocs.join('; ') || '-') + (lastFetchErr ? '. Catatan akses: ' + lastFetchErr : '') ;
+    throw e;
+  }
   const debetValue = klaimDebitValue(matchedRecord);
   if (!debetValue) throw new Error('Nilai debet invalid');
   const gameId = klaimGameId(matchedRecord);
@@ -2364,7 +2363,7 @@ async function sbwProcessOne(row) {
       return;
     }
     if (errMsg === 'userId berbeda benar sedikit bos') {
-      await sbwPatchClaim(id, { status: 'ID_SALAH', label: 'PERLU CEK ID', detail: 'Tiket tidak ketemu untuk user id "' + String(row.user_id || '') + '" — perbaiki user id / kode tiket lalu tekan Cek Ulang.' });
+      await sbwPatchClaim(id, { status: 'ID_SALAH', label: 'PERLU CEK ID', detail: (err && err.exposeDetail) || ('Tiket tidak ketemu untuk user id "' + String(row.user_id || '') + '" — perbaiki user id / kode tiket lalu tekan Cek Ulang.') });
       return;
     }
     await sbwPatchClaim(id, { status: 'ERROR', label: 'ERROR', detail: errMsg });
