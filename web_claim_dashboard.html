@@ -405,7 +405,7 @@
           '<span class="kv">Sc <b class="' + (hasActual ? 'act' : '') + '">' + sc + '</b>' + (scA ? '<span>→ ' + scA + '</span>' : '') + '</span>' +
         '</div>' +
         '<div class="rd">' + esc(c.detail || '') + '</div>' +
-        ((c.status === 'ID_SALAH' || (c.status === 'ERROR' && String(c.detail || '').indexOf('userId berbeda') >= 0)) ?
+        ((c.status === 'ID_SALAH' || c.status === 'INPUT_FAIL' || (c.status === 'ERROR' && String(c.detail || '').indexOf('userId berbeda') >= 0)) ?
           '<div class="fix">' +
             '<input class="fxu" placeholder="User ID" value="' + esc(c.user_id) + '" autocomplete="off" maxlength="64">' +
             '<input class="fxt" placeholder="Kode Tiket" value="' + esc(c.kode_tiket) + '" inputmode="numeric" autocomplete="off" maxlength="40">' +
