@@ -9,13 +9,22 @@ memasang extension yang sudah diproteksi.
 
 1. Buat project di [supabase.com](https://supabase.com) (bebas, pakai password sendiri).
 2. Buka **SQL Editor** → tempel isi `supabase/setup.sql` → **Run**.
-   - Ini membuat tabel `claims` + `sites`, kebijakan RLS (anon hanya boleh INSERT ke `claims`,
-     semua yang lain butuh token owner), dan seed situs default.
-3. Catat **Project URL** (`https://xxxx.supabase.co`) dan **publishable key** (`sb_publishable_...`)
-   dari **Project Settings → API**. Key ini memang untuk dipakai di sisi publik (aman dipasang
-   di browser karena data dilindungi RLS).
+   - Ini membuat tabel `claims` + `sites`, kebijakan RLS, proteksi trigger, dan seed situs.
+   - ⚠️ **PENTING (v2):** script `setup.sql` sekarang berisi `drop table`
+     (`claims`, `sites`) — menjalankannya **menghapus seluruh data klaim lama**.
+     Pastikan sudah tidak butuh data lama sebelum Run.
+   - Efek RLS v2:
+     - Klaim dari web dipaksa `status=PENDING` (tidak bisa spoof).
+     - Kolom inti klaim (site/user_id/kode_tiket/betting/scatter/mode) tidak bisa
+       diutak-atik lewat API, hanya status verifikasi yang bisa diubah worker.
+     - `status` dibatasi enum resmi.
+     - DELETE hanya untuk status FINAL (arsip selesai) → klaim yang masih
+       diproses tidak bisa dihapus orang lain.
+     - Rate-limit 60 klaim/jam per user id.
+3. Catat **Project URL** dan **publishable key** (`sb_publishable_...`) dari
+   **Project Settings → API**. Key ini memang publik (dilindungi RLS).
 
-> Jangan pernah memasang service/secret key di file web — tidak dibutuhkan di arsitektur ini.
+> Jangan pernah memasang service/secret key di file web.
 
 ---
 
@@ -75,9 +84,20 @@ Output ada di `deploy/` (web) dan `dist-extension/` (extension). Salin isi
 
 - **JS obfuscation** melindungi dari salinan/copy-paste cepat dan membingungkan
   pembaca biasa. Seseorang yang tekun tetap bisa membaca hasil obfuskasi.
-- Data aman oleh **Supabase RLS** (rule di `setup.sql`): orang lain tanpa token
-  owner tidak bisa me-*read*/ubah klaim atau situs.
+- **Data aman oleh Supabase RLS** (rule di `setup.sql`), ditambah trigger:
+  insert dipaksa PENDING, kolom inti terkunci, delete hanya status FINAL,
+  rate-limit anti-spam.
+- Sudah diuji (build uji tersedia): **XSS** — 15 payload (termasuk mXSS
+  `math`/`svg`, template injection, `on*` handler) semuanya di-neutralkan oleh
+  escaping; **SQL injection** terhadap REST — semua probe ditolak/dikembalikan
+  kosong (PostgREST parameterized + Cloudflare WAF); **status/header** —
+  HTTP→HTTPS redirect, HSTS, CSP aktif (di hosting statis: `X-Frame-Options`
+  dsb. harus via Vercel `vercel.json`).
+- **Keterbatasan yang jujur (tahap ini):** karena tidak ada login owner,
+  siapa pun dengan publishable key tetap bisa **membaca** klaim (tabel claims
+  `SELECT` publik, dibutuhkan fitur "lacak status" & dashboard tanpa login)
+  dan **menghapus** arsip status FINAL. Kolom inti & pelaksanaan proses tetap
+  aman. Untuk menutup ini sepenuhnya, upgrade berikutnya: **Supabase Auth +
+  policy `auth.role()='authenticated'`** (login owner di dashboard & extension).
 - Proteksi terkuat justru: repo **privat** + extension **tidak dibagikan**.
-  Kalau ingin betul-betul rapat, ubah repo ini jadi Private
-  (`Repo Settings → Danger Zone → Change visibility`) — hasil web tetap bisa
-  di-host dari Vercel.
+  Ubah repo ini jadi **Private** untuk menutup akses baca kode publik.
