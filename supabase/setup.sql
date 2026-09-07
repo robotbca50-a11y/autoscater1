@@ -104,7 +104,7 @@ begin
   -- jangan izinkan spoof status/label/mode dari form publik
   new.status := 'PENDING';
   new.label  := 'ANTRI';
-  new.mode   := coalesce(nullif(new.mode,''), 'WEB');
+  new.mode   := 'WEB'; -- kanal publik selalu WEB; MANUAL hanya lewat SQL admin
 
   -- hasil verifikasi hanya boleh ditulis oleh worker (via UPDATE),
   -- tidak boleh dikirim langsung saat INSERT

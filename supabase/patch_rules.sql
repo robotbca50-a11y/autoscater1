@@ -24,7 +24,7 @@ declare
 begin
   new.status := 'PENDING';
   new.label  := 'ANTRI';
-  new.mode   := coalesce(nullif(new.mode,''), 'WEB');
+  new.mode   := 'WEB'; -- kanal publik selalu WEB; MANUAL hanya via SQL admin
 
   -- hasil verifikasi hanya boleh ditulis worker via UPDATE
   new.match          := null;
