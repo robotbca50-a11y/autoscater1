@@ -197,6 +197,11 @@
   }
 
   @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+  .fix{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(216,180,90,.25);}
+  .fix input{flex:1 1 130px;min-width:0;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--soft);font-size:12px;outline:none;}
+  .fix input:focus{border-color:var(--gold);}
+  .fix button{padding:8px 14px;border-radius:8px;border:0;background:var(--gold);color:#241a04;font-weight:900;font-size:11px;letter-spacing:.06em;cursor:pointer;}
+  .fix button:disabled{opacity:.5;}
 </style>
 </head>
 <body>
@@ -271,6 +276,7 @@
           <option value="TIDAK_SESUAI">Tidak sesuai</option>
           <option value="INPUT_FAIL">Input gagal</option>
           <option value="ERROR">Error</option>
+          <option value="ID_SALAH">Perlu cek id</option>
         </select>
       </div>
       <div class="rows" id="rows"></div>
@@ -346,6 +352,7 @@
       INPUT_OK:     { cls: 'ok', txt: 'BERHASIL DIINPUT' },
       INPUT_FAIL:   { cls: 'gagal', txt: 'INPUT GAGAL' },
       ERROR:        { cls: 'err', txt: 'ERROR' },
+      ID_SALAH:     { cls: 'gagal', txt: 'PERLU CEK ID' },
       NO_TOKEN:     { cls: 'gagal', txt: 'TOKEN KOSONG' }
     };
     return m[s] || { cls: 'x3-5', txt: s || '?' };
@@ -372,7 +379,7 @@
     box.innerHTML = '';
     if (!claims.length) { empty.style.display = 'block'; return; }
 
-    var act = ['PENDING', 'QUEUED', 'VERIFYING', 'SESUAI', 'INPUTTING'];
+    var act = ['PENDING', 'QUEUED', 'VERIFYING', 'SESUAI', 'INPUTTING', 'ID_SALAH'];
     var shown = 0;
     for (i = claims.length - 1; i >= 0; i--) {
       c = claims[i];
@@ -397,7 +404,13 @@
           '<span class="kv">Bet <b class="' + (hasActual ? 'act' : '') + '">' + bet + '</b>' + (betA ? '<span>→ ' + betA + '</span>' : '') + '</span>' +
           '<span class="kv">Sc <b class="' + (hasActual ? 'act' : '') + '">' + sc + '</b>' + (scA ? '<span>→ ' + scA + '</span>' : '') + '</span>' +
         '</div>' +
-        '<div class="rd">' + esc(c.detail || '') + '</div>';
+        '<div class="rd">' + esc(c.detail || '') + '</div>' +
+        (c.status === 'ID_SALAH' ?
+          '<div class="fix">' +
+            '<input class="fxu" placeholder="User ID" value="' + esc(c.user_id) + '" autocomplete="off" maxlength="64">' +
+            '<input class="fxt" placeholder="Kode Tiket" value="' + esc(c.kode_tiket) + '" inputmode="numeric" autocomplete="off" maxlength="40">' +
+            '<button class="fxbtn" data-i="' + esc(c.id) + '">Cek Ulang</button>' +
+          '</div>' : '');
       out.push(div);
     }
 
@@ -471,6 +484,21 @@
 
   $('q').addEventListener('input', function () { if (currentTab === 'arsip') renderArsip(); });
   $('fStatus').addEventListener('change', function () { renderArsip(); });
+
+  $('rows').addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.fxbtn') : null;
+    if (!btn) return;
+    var id = btn.getAttribute('data-i');
+    var row = btn.closest ? btn.closest('.row') : null;
+    if (!id || !row) return;
+    var uid = row.querySelector('.fxu').value.trim();
+    var tx = row.querySelector('.fxt').value.trim();
+    if (!uid || !tx) { toast('Isi User ID dan Kode Tiket dulu.', 'bad'); return; }
+    btn.disabled = true;
+    SB.patch('claims', id, { user_id: uid, kode_tiket: tx, status: 'PENDING', label: 'ANTRI', detail: 'Dikirim ulang — menunggu verifikasi', match: null, actual_bet: null, actual_scatter: null })
+      .then(function () { toast('Klaim dikirim ulang untuk dicek.', 'ok'); poll(); })
+      .catch(function (err) { toast((err && err.message) || 'Gagal kirim ulang.', 'bad'); btn.disabled = false; });
+  });
 
   paintSc();
   loadSites();

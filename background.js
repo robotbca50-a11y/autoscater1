@@ -2363,6 +2363,10 @@ async function sbwProcessOne(row) {
       await sbwPatchClaim(id, { status: 'ERROR', label: 'INVALID SESSION', detail: 'Invalid operator session — token/admin tidak valid.' });
       return;
     }
+    if (errMsg === 'userId berbeda benar sedikit bos') {
+      await sbwPatchClaim(id, { status: 'ID_SALAH', label: 'PERLU CEK ID', detail: 'Tiket tidak ketemu untuk user id "' + String(row.user_id || '') + '" — perbaiki user id / kode tiket lalu tekan Cek Ulang.' });
+      return;
+    }
     await sbwPatchClaim(id, { status: 'ERROR', label: 'ERROR', detail: errMsg });
   } finally {
     sbwLocks.delete(id);
