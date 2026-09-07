@@ -97,6 +97,8 @@ create policy "sites_select_anon" on public.sites
 -- ---------- FUNGSI + TRIGGER PERLINDUNGAN ----------
 create or replace function public.claims_enforce_insert()
 returns trigger language plpgsql security definer as $$
+declare
+  cnt int;
 begin
   -- jangan izinkan spoof status/label/mode dari form publik
   new.status := 'PENDING';
@@ -114,6 +116,14 @@ begin
   new.updated_at := now();
   -- CATATAN: kolom identity `claim_no` TIDAK diutak-atik —
   -- biarkan sequence mengisi otomatis.
+
+  -- maksimal 2 klaim / user id / hari (WIB), reset otomatis tengah malam
+  select count(*) into cnt from public.claims
+  where user_id = new.user_id
+    and cast(created_at + interval '7 hours' as date) = cast(now() + interval '7 hours' as date);
+  if cnt >= 2 then
+    raise exception 'maksimal 2 klaim per user id per hari';
+  end if;
 
   return new;
 end $$;
