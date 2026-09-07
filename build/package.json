@@ -1,1 +1,1 @@
-﻿{ "name":"autoscater-web-build","private":true,"version":"1.0.0","type":"module","dependencies":{"javascript-obfuscator":"^4.1.1"} }
+{"name":"autoscater-build","private":true,"dependencies":{"javascript-obfuscator":"^5.6.0","jsdom":"^30.0.1"}}

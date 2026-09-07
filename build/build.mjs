@@ -82,6 +82,7 @@ console.log('web  sb.js (obfuscated)');
 copyFileSync(join(root, 'messageImage_1787629523742.jpg'), join(outWeb, 'messageImage_1787629523742.jpg'));
 mkdirSync(join(outWeb, 'supabase'), { recursive: true });
 copyFileSync(join(webSrc, 'supabase', 'setup.sql'), join(outWeb, 'supabase', 'setup.sql'));
+copyFileSync(join(webSrc, 'supabase', 'patch_rules.sql'), join(outWeb, 'supabase', 'patch_rules.sql'));
 console.log('web  asset jpg + supabase/setup.sql copied');
 
 /* ============================================================
