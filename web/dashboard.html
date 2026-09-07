@@ -449,7 +449,7 @@
     SB.insert('claims', {
       site: site, user_id: userId, kode_tiket: tx,
       betting: betNum, scatter: scatterSel,
-      status: 'PENDING', label: 'ANTRI', detail: 'Menunggu antrian verifikasi'
+      status: 'PENDING', label: 'ANTRI', detail: 'Menunggu antrian verifikasi', mode: 'MANUAL'
     }).then(function () {
       toast('Klaim diterima — diantre untuk diverifikasi.', 'ok');
       $('f_user').value = ''; $('f_tx').value = ''; $('f_bet').value = '';
