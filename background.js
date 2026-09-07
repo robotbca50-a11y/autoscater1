@@ -765,7 +765,28 @@ async function webClaimFillForm(formData, formUrl) {
         }
         chrome.tabs.onUpdated.addListener(listener);
       });
-      await new Promise(r => setTimeout(r, 1000));
+      await sleep(1500);
+      const btnReady = () => {
+        try {
+          const b = document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+            || Array.from(document.querySelectorAll('button')).find(x => /tambah|klaim/i.test((x.textContent || '').trim())) || null;
+          return !!(b && b.offsetParent !== null);
+        } catch (_) { return false; }
+      };
+      let formReady = false;
+      for (let p = 0; p < 30 && !formReady; p++) {
+        try {
+          const [rr] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: btnReady });
+          formReady = !!(rr && rr.result);
+        } catch (_) {}
+        if (!formReady) await sleep(1500);
+      }
+      if (!formReady) {
+        lastMsg = 'Halaman belum siap: tombol +tambah data tidak kelihatan';
+        n = 3;
+        continue;
+      }
+      await sleep(400);
       const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimAutomateForm, args: [formData] });
       const result = execResult?.result || null;
       if (result && typeof result === 'object') {
