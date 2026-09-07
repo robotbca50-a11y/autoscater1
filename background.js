@@ -757,8 +757,15 @@ async function webClaimFillForm(formData, formUrl) {
   for (let n = 1; n <= 3; n++) {
     let tab;
     try {
-      tab = await safeTabCreate(fillUrl, { active: false });
-      await waitTab(tab.id, 25000); await sleep(1200);
+      tab = await chrome.tabs.create({ url: fillUrl, active: false });
+      await new Promise((res, rej) => {
+        const timer = setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); rej(new Error('Tab load timeout')); }, 15000);
+        function listener(tabId, info) {
+          if (tabId === tab.id && info.status === 'complete') { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(listener); res(); }
+        }
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+      await new Promise(r => setTimeout(r, 1000));
       const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimAutomateForm, args: [formData] });
       const result = execResult?.result || null;
       if (result && typeof result === 'object') {
