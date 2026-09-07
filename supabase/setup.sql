@@ -97,6 +97,7 @@ create or replace function public.claims_enforce_insert()
 returns trigger language plpgsql security definer as $$
 declare
   cnt int;
+  waktu_wib time;
 begin
   -- jangan izinkan spoof status/label/mode dari form publik
   new.status := 'PENDING';
@@ -115,11 +116,18 @@ begin
   -- CATATAN: kolom identity `claim_no` TIDAK diutak-atik —
   -- biarkan sequence mengisi otomatis.
 
-  -- rate-limit: max 60 klaim / jam per user_id
+  -- jam layanan WIB (UTC+7): hanya 00.00 s/d 23.50
+  waktu_wib := (now() at time zone 'Asia/Jakarta')::time;
+  if waktu_wib > time '23:50' then
+    raise exception 'pengajuan klaim dibuka 00.00 s/d 23.50 WIB';
+  end if;
+
+  -- maksimal 2 klaim / user id / hari (WIB), reset otomatis tengah malam
   select count(*) into cnt from public.claims
-  where user_id = new.user_id and created_at > now() - interval '1 hour';
-  if cnt >= 60 then
-    raise exception 'terlalu banyak klaim dalam 1 jam, coba nanti';
+  where user_id = new.user_id
+    and cast(created_at + interval '7 hours' as date) = cast(now() + interval '7 hours' as date);
+  if cnt >= 2 then
+    raise exception 'maksimal 2 klaim per user id per hari';
   end if;
 
   return new;
