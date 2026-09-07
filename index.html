@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BANDAR80 — Ajukan Klaim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --ink:#f5ecd9;--soft:#d9cdb4;--muted:#b3a68c;
+    --gold:#d8b45a;--gold2:#e8c96a;
+    --line:rgba(216,180,90,.30);--line2:rgba(216,180,90,.45);
+    --green:#57c98d;--red:#ef6a6a;
+  }
+  body{font-family:'Inter',sans-serif;color:var(--ink);min-height:100vh;overflow-x:hidden;
+    background:#0b0a08 radial-gradient(900px 500px at 15% -10%,rgba(216,180,90,.10),transparent 60%),
+      radial-gradient(700px 500px at 105% 110%,rgba(87,201,141,.05),transparent 55%);}
+  .wrap{position:relative;z-index:1;max-width:620px;margin:0 auto;padding:34px 20px 50px;}
+
+  header{display:flex;align-items:center;gap:16px;margin-bottom:26px;
+    opacity:0;transform:translateY(12px);animation:rise .6s cubic-bezier(.22,.61,.36,1) forwards;}
+  .crest{position:relative;width:54px;height:54px;flex:none;border-radius:50%;
+    display:grid;place-items:center;
+    background:radial-gradient(circle at 30% 25%,#3a2f14,#0e0b06 72%);
+    border:1px solid var(--line2);
+    box-shadow:0 0 0 6px rgba(216,180,90,.06),0 0 24px rgba(216,180,90,.18);
+    font-family:'Cinzel',serif;font-weight:900;font-size:20px;color:var(--gold2);}
+  .crest::after{content:"";position:absolute;inset:4px;border:1px dashed rgba(216,180,90,.34);border-radius:50%;}
+  .brand small{display:block;font-size:9.5px;font-weight:800;letter-spacing:.34em;color:var(--gold);text-transform:uppercase;margin-bottom:4px;}
+  .brand h1{font-family:'Cinzel',serif;font-weight:700;font-size:26px;letter-spacing:.06em;color:var(--ink);}
+  .brand p{font-size:11.5px;color:var(--muted);margin-top:4px;letter-spacing:.04em;}
+
+  @keyframes rise{to{opacity:1;transform:none}}
+  .card{position:relative;background:linear-gradient(180deg,rgba(20,17,12,.92),rgba(11,9,7,.96));
+    border:1px solid var(--line);border-radius:16px;padding:28px 28px 30px;
+    box-shadow:0 24px 56px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.05);
+    opacity:0;transform:translateY(14px);animation:rise .6s cubic-bezier(.22,.61,.36,1) .08s forwards;}
+  .card::before,.card::after{content:"";position:absolute;width:34px;height:34px;pointer-events:none;}
+  .card::before{top:-1px;left:-1px;border-top:3px solid var(--gold);border-left:3px solid var(--gold);border-top-left-radius:16px;}
+  .card::after{bottom:-1px;right:-1px;border-bottom:3px solid rgba(216,180,90,.6);border-right:3px solid rgba(216,180,90,.6);border-bottom-right-radius:16px;}
+  .kicker{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
+  .kicker .hr{height:1px;flex:1;background:linear-gradient(90deg,var(--line2),transparent);}
+  .kicker span{font-family:'Cinzel',serif;font-weight:700;font-size:13px;letter-spacing:.28em;color:var(--gold);text-transform:uppercase;white-space:nowrap;}
+
+  .field{display:flex;flex-direction:column;gap:7px;margin-bottom:17px;}
+  label{font-size:10px;font-weight:800;letter-spacing:.22em;color:var(--muted);text-transform:uppercase;}
+  label small{letter-spacing:.05em;text-transform:none;font-weight:500;}
+  input,select{width:100%;background:rgba(15,13,10,.9);border:1px solid var(--line);border-radius:11px;color:var(--ink);
+    padding:13px 14px;font-size:14px;font-family:'Inter',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;}
+  input::placeholder{color:#7d7260;}
+  input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(216,180,90,.14),0 0 22px rgba(216,180,90,.08);}
+  select option{background:#14110c;color:var(--ink);}
+  .scatter{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .scatter button{position:relative;overflow:hidden;border:1px solid var(--line);background:rgba(15,13,10,.9);color:var(--soft);
+    border-radius:11px;padding:14px 8px;font-family:'Cinzel',serif;font-weight:700;font-size:16px;cursor:pointer;
+    transition:all .18s;}
+  .scatter button small{display:block;font-size:10px;font-weight:700;color:var(--muted);margin-top:2px;letter-spacing:.14em;}
+  .scatter button:hover{border-color:var(--line2);transform:translateY(-1px);}
+  .scatter button.sel{border-color:var(--gold);color:var(--gold2);box-shadow:0 0 0 3px rgba(216,180,90,.14),0 6px 20px rgba(0,0,0,.4);}
+  .scatter button.sel small{color:var(--gold);}
+  .btn{position:relative;overflow:hidden;border:none;cursor:pointer;width:100%;
+    font-family:'Cinzel',serif;font-weight:900;font-size:14px;letter-spacing:.24em;text-transform:uppercase;
+    padding:17px 30px;border-radius:12px;color:#1c1404;
+    background:linear-gradient(160deg,var(--gold2),var(--gold) 55%,#b98f2e);
+    box-shadow:0 8px 30px rgba(216,180,90,.28),inset 0 1px 0 rgba(255,255,255,.4);
+    transition:transform .16s,box-shadow .25s;}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(216,180,90,.4);}
+  .btn:active{transform:translateY(0);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn .shine{position:absolute;top:0;left:-60%;width:40%;height:100%;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-18deg);}
+  .btn:hover .shine{animation:shine .8s ease;}
+  @keyframes shine{to{left:120%;}}
+  .hint{margin-top:16px;font-size:11px;color:var(--muted);line-height:1.8;text-align:center;letter-spacing:.02em;}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,130%);z-index:40;
+    background:rgba(13,11,8,.98);border:1px solid var(--line2);border-radius:12px;
+    padding:14px 22px;font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.03em;
+    box-shadow:0 14px 44px rgba(0,0,0,.6);text-align:center;max-width:min(90vw,520px);
+    transition:transform .4s cubic-bezier(.22,.61,.36,1);}
+  .toast.show{transform:translate(-50%,0);}
+  .toast.ok{border-color:rgba(87,201,141,.55);} .toast.ok::before{content:"✓ ";}
+  .toast.bad{border-color:rgba(239,106,106,.55);} .toast.bad::before{content:"✗ ";}
+  .toast.info::before{content:"— ";}
+
+  .foot{margin-top:26px;text-align:center;font-size:10px;color:#8d816c;letter-spacing:.14em;}
+  .foot b{color:var(--gold);}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="crest">B</div>
+    <div class="brand">
+      <small>Sistem Pelayanan Klaim</small>
+      <h1>BANDAR80</h1>
+      <p>Ajukan klaim scatter kamu — diverifikasi dua lapis</p>
+    </div>
+  </header>
+
+  <div class="card">
+    <div class="kicker"><span>Form Klaim</span><div class="hr"></div></div>
+    <div class="field">
+      <label>Situs</label>
+      <select id="f_site"><option value="">Memuat situs...</option></select>
+    </div>
+    <div class="field">
+      <label>User ID</label>
+      <input id="f_user" placeholder="hokiudore" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Kode Tiket <small>(transaction ID)</small></label>
+      <input id="f_tx" placeholder="2081566454871960576" inputmode="numeric" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Betting <small>(nominal)</small></label>
+      <input id="f_bet" placeholder="50000" inputmode="numeric" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Scatter</label>
+      <div class="scatter" id="scSel">
+        <button type="button" data-v="3">x3<small>TIGA</small></button>
+        <button type="button" data-v="4">x4<small>EMPAT</small></button>
+        <button type="button" data-v="5">x5<small>LIMA</small></button>
+      </div>
+    </div>
+    <button class="btn" id="btnSubmit"><span class="shine"></span>Kirim Klaim</button>
+    <div class="hint">Klaim masuk antrian verifikasi. Tidak diperjualbelikan &amp; hanya diproses untuk situs yang terdaftar.</div>
+  </div>
+
+  <div class="foot">AUTO CEK SCATER LIVE — <b>v1.6.0</b></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="sb.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var scatterSel = 3, busy = false, toastTimer = null;
+  var scBtn = Array.prototype.slice.call(document.querySelectorAll('#scSel button'));
+
+  function paintSc() {
+    scBtn.forEach(function (b) { b.classList.toggle('sel', Number(b.getAttribute('data-v')) === scatterSel); });
+  }
+  scBtn.forEach(function (b) {
+    b.addEventListener('click', function () { scatterSel = Number(this.getAttribute('data-v')); paintSc(); });
+  });
+
+  function toast(txt, kind) {
+    var t = $('toast');
+    t.className = 'toast show ' + (kind || 'info');
+    t.textContent = txt;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 4600);
+  }
+
+  function loadSites() {
+    SB.listActiveSites().then(function (rows) {
+      var sel = $('f_site');
+      if (!rows || !rows.length) {
+        sel.innerHTML = '<option value="">Belum ada situs terdaftar</option>';
+        sel.disabled = true;
+        toast('Sistem sedang tidak menerima klaim.', 'bad');
+        return;
+      }
+      sel.innerHTML = rows.map(function (r) { return '<option value="' + r.site_id + '">' + r.label + '</option>'; }).join('');
+    }).catch(function (e) {
+      $('f_site').innerHTML = '<option value="">Gagal memuat situs</option>';
+      toast('Gagal hubungi server. Coba lagi nanti.', 'bad');
+    });
+  }
+
+  $('btnSubmit').addEventListener('click', function () {
+    if (busy) return;
+    var site = $('f_site').value;
+    var userId = $('f_user').value.trim();
+    var tx = $('f_tx').value.trim();
+    var bet = $('f_bet').value.replace(/[^\d]/g, '');
+    if (!site) { toast('Pilih situs tujuan dulu.', 'bad'); return; }
+    if (!userId || !tx || !bet) { toast('Lengkapi User ID, Kode Tiket, dan Betting.', 'bad'); return; }
+    if (parseInt(bet, 10) <= 0) { toast('Nominal betting tidak valid.', 'bad'); return; }
+
+    busy = true; $('btnSubmit').disabled = true;
+    SB.insert('claims', {
+      site: site,
+      user_id: userId,
+      kode_tiket: tx,
+      betting: parseInt(bet, 10),
+      scatter: scatterSel,
+      status: 'PENDING',
+      label: 'ANTRI',
+      detail: 'Menunggu antrian verifikasi',
+      mode: 'WEB'
+    }).then(function () {
+      toast('Klaim diterima — diantre untuk diverifikasi.', 'ok');
+      $('f_user').value = ''; $('f_tx').value = ''; $('f_bet').value = '';
+    }).catch(function (e) {
+      toast(e && e.message ? 'Gagal kirim: ' + e.message : 'Gagal mengirim klaim.', 'bad');
+    }).finally(function () {
+      busy = false; $('btnSubmit').disabled = false;
+    });
+  });
+
+  paintSc();
+  loadSites();
+})();
+</script>
+</body>
+</html>
