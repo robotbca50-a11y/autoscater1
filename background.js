@@ -752,11 +752,12 @@ async function webClaimDrain() {
 /* Isi form klaim web bonus (bonussmb.com/tickets) — port dari bg-secure.js (AUTO RELAX). */
 async function webClaimFillForm(formData, formUrl) {
   const url = formUrl || WEB_CLAIM_FORM_URL;
+  const fillUrl = url + (String(url).indexOf('?') >= 0 ? '&' : '?') + 'tm_fill=1';
   let lastMsg = 'Form tidak merespons';
   for (let n = 1; n <= 3; n++) {
     let tab;
     try {
-      tab = await safeTabCreate(url, { active: false });
+      tab = await safeTabCreate(fillUrl, { active: false });
       await waitTab(tab.id, 25000); await sleep(1200);
       const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimAutomateForm, args: [formData] });
       const result = execResult?.result || null;
