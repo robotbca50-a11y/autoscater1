@@ -97,9 +97,6 @@ create policy "sites_select_anon" on public.sites
 -- ---------- FUNGSI + TRIGGER PERLINDUNGAN ----------
 create or replace function public.claims_enforce_insert()
 returns trigger language plpgsql security definer as $$
-declare
-  cnt int;
-  waktu_wib time;
 begin
   -- jangan izinkan spoof status/label/mode dari form publik
   new.status := 'PENDING';
@@ -118,20 +115,6 @@ begin
   -- CATATAN: kolom identity `claim_no` TIDAK diutak-atik —
   -- biarkan sequence mengisi otomatis.
 
-  -- jam layanan WIB (UTC+7): hanya 00.00 s/d 23.50
-  waktu_wib := (now() at time zone 'Asia/Jakarta')::time;
-  if waktu_wib > time '23:50' then
-    raise exception 'pengajuan klaim dibuka 00.00 s/d 23.50 WIB';
-  end if;
-
-  -- maksimal 2 klaim / user id / hari (WIB), reset otomatis tengah malam
-  select count(*) into cnt from public.claims
-  where user_id = new.user_id
-    and cast(created_at + interval '7 hours' as date) = cast(now() + interval '7 hours' as date);
-  if cnt >= 2 then
-    raise exception 'maksimal 2 klaim per user id per hari';
-  end if;
-
   return new;
 end $$;
 
@@ -143,13 +126,12 @@ create trigger trg_claims_enforce_insert
 create or replace function public.claims_protect_update()
 returns trigger language plpgsql security definer as $$
 begin
-  -- kolom inti tidak bisa diutak-atik lewat REST anon
-  if (new.site      is distinct from old.site)      or
-     (new.user_id   is distinct from old.user_id)   or
-     (new.kode_tiket is distinct from old.kode_tiket) or
-     (new.betting   is distinct from old.betting)   or
-     (new.scatter   is distinct from old.scatter)   or
-     (new.mode      is distinct from old.mode)      or
+  -- kolom nilai uang & mode tidak bisa diutak-atik lewat REST anon;
+  -- user_id/kode_tiket BOLEH diperbaiki (dashboard: Cek Ulang ID salah)
+  if (new.site       is distinct from old.site)      or
+     (new.betting    is distinct from old.betting)   or
+     (new.scatter    is distinct from old.scatter)   or
+     (new.mode       is distinct from old.mode)      or
      (new.site_label is distinct from old.site_label) then
     raise exception 'kolom inti klaim tidak boleh diubah';
   end if;
