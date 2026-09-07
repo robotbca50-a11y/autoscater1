@@ -288,8 +288,7 @@
     if (busy) return;
     var botTrap = $('f_bot');
     if (botTrap && botTrap.value) return;
-    if (Date.now() - lastSubmit < 4000) { showToast('Terlalu cepat, tunggu sesaat.', 'bad'); return; }
-    lastSubmit = Date.now();
+    if (Date.now() - lastSubmit < 1200) return;
     var site = $('f_site').value, userId = $('f_user').value.trim(), tx = $('f_tx').value.trim(), betRaw = betDigits();
     if (site.length > 64 || userId.length > 64 || tx.length > 40 || betRaw.length > 12) { showToast('Data terlalu panjang.', 'bad'); return; }
     if (!site) { showToast('Pilih situs tujuan dulu.', 'bad'); return; }
@@ -300,6 +299,7 @@
     if (betNum > MONEY_MAX) { showToast('Antara Rp ' + moneyTxt(MONEY_MIN) + ' dan Rp ' + moneyTxt(MONEY_MAX) + '.', 'bad'); return; }
 
     busy = true; $('btnSubmit').disabled = true;
+    lastSubmit = Date.now();
     SB.insert('claims', {
       site: site, user_id: userId, kode_tiket: tx,
       betting: betNum, scatter: scatterSel,
