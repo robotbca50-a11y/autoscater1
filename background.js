@@ -646,6 +646,7 @@ function webClaimLabel(status) {
   const map = {
     QUEUED: 'ANTRI', VERIFYING: 'MEMERIKSA', SESUAI: 'SESUAI', TIDAK_SESUAI: 'TIDAK SESUAI',
     INPUTTING: 'INPUT KE WEB BONUS', INPUT_OK: 'BERHASIL DIINPUT', INPUT_FAIL: 'INPUT GAGAL',
+    APPROVED: 'APPROVE', REJECTED: 'REJECT',
     ERROR: 'ERROR', NO_TOKEN: 'TOKEN KOSONG'
   };
   return map[status] || status || '?';
@@ -745,6 +746,14 @@ async function webClaimDrain() {
       if (!webClaimLocks.has(c.claimId)) { webClaimProcess(c).catch(() => {}); }
       await sleep(150);
     }
+    /* Verdict pasca-input (port bg-queue AUTO RELAX): claim yang sudah BERHASIL
+       DIINPUT dicek ke /history → APPROVE/REJECT dari situs. Ulang tiap 60 dtk
+       sampai dapat verdict. */
+    const toCheck = list.filter(c => c && c.status === 'INPUT_OK' && !c.verdict && (!c.verdictAt || Date.now() - c.verdictAt > 60000));
+    for (const c of toCheck) {
+      if (!webClaimLocks.has(c.claimId)) { webClaimVerdictCheck(c).catch(() => {}); }
+      await sleep(200);
+    }
   } catch (_) {} finally {
     webClaimRunning = false;
   }
@@ -790,6 +799,82 @@ async function webClaimFillForm(formData, formUrl) {
     await sleep(1500);
   }
   return { ok: false, message: lastMsg };
+}
+
+/* Verdict approve/reject dari situs (port bg-queue.js AUTO RELAX): buka /history,
+   cek kode tiket, baca kolom 9 & 10 → APPROVED/REJECTED. */
+async function webClaimVerdictCheck(claim) {
+  if (!claim || !claim.claimId) return false;
+  const txId = String(claim.kodeTiket || claim.transactionId || '').trim();
+  if (!txId) return false;
+  const base = String(txId).split('-')[0];
+  if (!base) return false;
+  let tab;
+  try {
+    tab = await chrome.tabs.create({ url: 'https://bonussmb.com/history?tm_quiet=1', active: false });
+    await new Promise((res, rej) => {
+      const timer = setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); rej(new Error('Tab load timeout')); }, 15000);
+      function listener(tabId, info) {
+        if (tabId === tab.id && info.status === 'complete') { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(listener); res(); }
+      }
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    await sleep(2000);
+    const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimHistoryVerdict, args: [base] });
+    const r = execResult?.result;
+    if (r && (r.status === 'APPROVED' || r.status === 'REJECTED')) {
+      await webClaimPatch(claim.claimId, { verdict: r.status, verdictAt: Date.now(), status: r.status, label: webClaimLabel(r.status), detail: r.combined || r.status, match: true });
+      processLog(txId, 'CLAIM_VERDICT', { status: r.status, combined: r.combined }, 'WEB');
+      return true;
+    }
+    await webClaimPatch(claim.claimId, { verdictAt: Date.now() });
+  } catch (err) {
+    processLog(txId, 'CLAIM_VERDICT_ERR', { error: String((err && err.message) || err) }, 'WEB');
+  } finally {
+    if (tab?.id) { try { await closeTab(tab.id); } catch (_) {} }
+  }
+  return false;
+}
+
+function webClaimHistoryVerdict(base) {
+  const xp = (p) => document.evaluate(p, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function setViaPaste(el, value) {
+    if (!el) return;
+    el.focus();
+    const dt = new DataTransfer();
+    dt.setData('text/plain', value);
+    el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  return (async () => {
+    try {
+      const t0 = Date.now();
+      let input = xp('//*[@id="root"]/div/main/div/div[3]/div[1]/div[1]/input');
+      while (!input && Date.now() - t0 < 10000) { await sleep(300); input = xp('//*[@id="root"]/div/main/div/div[3]/div[1]/div[1]/input'); }
+      if (!input) return { status: '', combined: '' };
+      setViaPaste(input, '');
+      await sleep(300);
+      setViaPaste(input, base);
+      await sleep(800);
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await sleep(150);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await sleep(150);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await sleep(2500);
+      const col9 = (xp('//*[@id="root"]/div/main/div/div[3]/div[2]/div/table/tbody/tr/td[9]') || {}).innerText?.trim() || '';
+      const col10 = (xp('//*[@id="root"]/div/main/div/div[3]/div[2]/div/table/tbody/tr/td[10]') || {}).innerText?.trim() || '';
+      const combined = ((col9 + ' ' + col10) || '').toLowerCase();
+      let status = '';
+      if (combined.includes('reject')) status = 'REJECTED';
+      else if (combined.includes('approve')) status = 'APPROVED';
+      return { status, combined: (col9 + ' ' + col10).trim() };
+    } catch (_) { return { status: '', combined: '' }; }
+  })();
 }
 
 function webClaimAutomateForm(data) {
@@ -2227,7 +2312,7 @@ chrome.action.onClicked.addListener(() => { try { chrome.tabs.create({ url: chro
    reject tetap dijalankan oleh tickets_monitor pada dashboard bonus tujuan. */
 const SBW_URL = 'https://epzuvadrnzdnyyhwiqyc.supabase.co/rest/v1';
 const SBW_KEY = 'sb_publishable_4GtsLX1vvVcyfyFnL91JwQ_DLh_jvjP';
-const SBW_LABEL = { PENDING: 'ANTRI', VERIFYING: 'MEMERIKSA', SESUAI: 'SESUAI', TIDAK_SESUAI: 'TIDAK SESUAI', INPUTTING: 'INPUT WEB BONUS', INPUT_OK: 'BERHASIL DIINPUT', INPUT_FAIL: 'INPUT GAGAL', NO_TOKEN: 'TOKEN KOSONG', ERROR: 'ERROR' };
+const SBW_LABEL = { PENDING: 'ANTRI', VERIFYING: 'MEMERIKSA', SESUAI: 'SESUAI', TIDAK_SESUAI: 'TIDAK SESUAI', INPUTTING: 'INPUT WEB BONUS', INPUT_OK: 'BERHASIL DIINPUT', INPUT_FAIL: 'INPUT GAGAL', APPROVED: 'APPROVE', REJECTED: 'REJECT', NO_TOKEN: 'TOKEN KOSONG', ERROR: 'ERROR' };
 const sbwLocks = new Set();
 let sbwBusy = false;
 let sbwSites = {}; let sbwSitesAt = 0;
@@ -2348,6 +2433,42 @@ async function sbwProcessOne(row) {
   }
 }
 
+async function sbwVerdictCheck(row) {
+  const id = (row && row.id) || '';
+  if (!id || sbwLocks.has(id)) return;
+  const txId = String(row.kode_tiket || '').trim();
+  if (!txId) return;
+  if (row.verdict || (row.verdict_at && (Date.now() - new Date(row.verdict_at).getTime()) < 60000)) return;
+  const base = String(txId).split('-')[0];
+  if (!base) return;
+  sbwLocks.add(id);
+  let tab;
+  try {
+    tab = await chrome.tabs.create({ url: 'https://bonussmb.com/history?tm_quiet=1', active: false });
+    await new Promise((res, rej) => {
+      const timer = setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); rej(new Error('Tab load timeout')); }, 15000);
+      function listener(tabId, info) {
+        if (tabId === tab.id && info.status === 'complete') { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(listener); res(); }
+      }
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    await sleep(2000);
+    const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimHistoryVerdict, args: [base] });
+    const r = execResult?.result;
+    if (r && (r.status === 'APPROVED' || r.status === 'REJECTED')) {
+      await sbwPatchClaim(id, { verdict: r.status, verdict_at: new Date().toISOString(), status: r.status, label: r.status === 'APPROVED' ? 'APPROVE' : 'REJECT', detail: r.combined || r.status, match: true });
+      processLog(txId, 'SBW_VERDICT', { site: row.site, status: r.status, combined: r.combined }, 'CLOUD');
+      return;
+    }
+    await sbwPatchClaim(id, { verdict_at: new Date().toISOString() });
+  } catch (err) {
+    processLog(txId, 'SBW_VERDICT_ERR', { error: String((err && err.message) || err) }, 'CLOUD');
+  } finally {
+    if (tab?.id) { try { await closeTab(tab.id); } catch (_) {} }
+    sbwLocks.delete(id);
+  }
+}
+
 async function sbwDrain() {
   if (sbwBusy) return;
   sbwBusy = true;
@@ -2355,11 +2476,22 @@ async function sbwDrain() {
     const st = await getS(['token', 'operationMode']);
     if (!st.token || st.token.length < 10) return; // bot belum siap, tunggu cycle berikutnya
     const rows = await sbwFetch('/claims?select=*&status=eq.PENDING&order=created_at.asc&limit=8');
-    if (!Array.isArray(rows) || !rows.length) return;
-    for (const row of rows) {
-      if (sbwLocks.has(row.id)) continue;
-      await sbwProcessOne(row).catch(() => {});
-      await sleep(200);
+    if (Array.isArray(rows)) {
+      for (const row of rows) {
+        if (sbwLocks.has(row.id)) continue;
+        await sbwProcessOne(row).catch(() => {});
+        await sleep(200);
+      }
+    }
+    /* Verdict pasca-input (port bg-queue AUTO RELAX): claim BERHASIL DIINPUT
+       dicek ke /history → APPROVE/REJECT dari situs. Ulang per 60 dtk. */
+    const verdictRows = await sbwFetch('/claims?select=*&status=eq.INPUT_OK&order=updated_at.desc&limit=5');
+    if (Array.isArray(verdictRows)) {
+      for (const v of verdictRows) {
+        if (sbwLocks.has(v.id)) continue;
+        await sbwVerdictCheck(v).catch(() => {});
+        await sleep(300);
+      }
     }
   } catch (_) {
   } finally {

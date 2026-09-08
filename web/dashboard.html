@@ -273,6 +273,8 @@
           <option value="">Semua status</option>
           <option value="aktif">Sedang diproses</option>
           <option value="INPUT_OK">Berhasil diinput</option>
+          <option value="APPROVED">Approve</option>
+          <option value="REJECTED">Reject</option>
           <option value="TIDAK_SESUAI">Tidak sesuai</option>
           <option value="INPUT_FAIL">Input gagal</option>
           <option value="ERROR">Error</option>
@@ -350,6 +352,8 @@
       TIDAK_SESUAI: { cls: 'gagal', txt: 'TIDAK SESUAI' },
       INPUTTING:    { cls: 'act vrf', txt: 'INPUT WEB BONUS' },
       INPUT_OK:     { cls: 'ok', txt: 'BERHASIL DIINPUT' },
+      APPROVED:     { cls: 'ok', txt: 'APPROVE' },
+      REJECTED:     { cls: 'gagal', txt: 'REJECT' },
       INPUT_FAIL:   { cls: 'gagal', txt: 'INPUT GAGAL' },
       ERROR:        { cls: 'err', txt: 'ERROR' },
       ID_SALAH:     { cls: 'gagal', txt: 'PERLU CEK ID' },
@@ -366,9 +370,9 @@
     var stOk = 0, stSesuai = 0, stTolak = 0;
     for (i = 0; i < claims.length; i++) {
       c = claims[i];
-      if (c.status === 'INPUT_OK') stOk++;
-      if (c.match === true || c.status === 'SESUAI' || c.status === 'INPUT_OK') stSesuai++;
-      if (c.status === 'TIDAK_SESUAI' || c.status === 'INPUT_FAIL' || c.status === 'ERROR') stTolak++;
+      if (c.status === 'INPUT_OK' || c.status === 'APPROVED') stOk++;
+      if (c.match === true || c.status === 'SESUAI' || c.status === 'INPUT_OK' || c.status === 'APPROVED') stSesuai++;
+      if (c.status === 'TIDAK_SESUAI' || c.status === 'INPUT_FAIL' || c.status === 'REJECTED' || c.status === 'ERROR') stTolak++;
     }
     $('st_total').textContent = claims.length;
     $('st_ok').textContent = stOk;
