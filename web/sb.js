@@ -1,79 +1,58 @@
 /* ============================================================
-   BANDAR80 — sb.js (Supabase REST, browser)
-   Dipakai oleh index.html (form publik) dan dashboard.html (owner).
-   Tidak butuh extension di sisi pengunjung web.
+   BANDAR80 — sb.js (klien web PUBLIK → /api/*)
+   Dipakai index.html. TIDAK ada kunci/URL Supabase di browser:
+   semua akses lewat serverless API sesama domain.
    ============================================================ */
 window.SB = (function () {
-  var BASE = (window.__CFG__ && window.__CFG__.SUPABASE_URL ? window.__CFG__.SUPABASE_URL : 'https://epzuvadrnzdnyyhwiqyc.supabase.co') + '/rest/v1';
-  var KEY  = (window.__CFG__ && window.__CFG__.SB_KEY  ? window.__CFG__.SB_KEY  : 'sb_publishable_4GtsLX1vvVcyfyFnL91JwQ_DLh_jvjP');
-
-  function hdr(prefer) {
-    var h = {
-      'apikey': KEY,
-      'Authorization': 'Bearer ' + KEY,
-      'Content-Type': 'application/json'
-    };
-    if (prefer) h['Prefer'] = prefer;
-    return h;
-  }
-
-  function qp(obj) {
-    var p = new URLSearchParams();
-    Object.keys(obj || {}).forEach(function (k) {
-      var v = obj[k];
-      if (v === undefined || v === null || v === '') return;
-      p.set(k, typeof v === 'string' ? v : JSON.stringify(v));
-    });
-    var s = p.toString();
-    return s ? ('?' + s) : '';
-  }
-
-  function json(res) {
-    return res.text().then(function (t) { return t ? JSON.parse(t) : null; });
-  }
-
-  function api(path, opts) {
-    return fetch(BASE + path, opts).then(function (res) {
-      if (!res.ok) {
-        return res.text().then(function (t) { throw new Error('Supabase ' + res.status + ': ' + t); });
-      }
-      return json(res);
+  function esc(v) { return encodeURIComponent(String(v == null ? '' : v)); }
+  function call(method, url, body) {
+    var opt = { method: method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } };
+    if (body) opt.body = JSON.stringify(body);
+    return fetch(url, opt).then(function (res) {
+      return res.json().catch(function () { return { ok: false, code: 'BAD_HTTP', message: 'Server error' }; })
+        .then(function (d) {
+          if (!res.ok || d === null || d.ok === false) {
+            var e = new Error((d && d.message) || ('HTTP ' + res.status));
+            e.code = (d && d.code) || ('HTTP' + res.status);
+            e.http = res.status;
+            throw e;
+          }
+          return d;
+        });
     });
   }
 
-  /* SELECT list: GET /table?select=...&... */
-  function list(table, opts) {
-    var o = opts || {};
-    var p = { select: o.select ? o.select.join(',') : '*', order: o.order || undefined, limit: o.limit !== undefined ? String(o.limit) : undefined };
-    (o.filters || []).forEach(function (f) { p[f.k] = f.v; });
-    return api('/' + table + qp(p), { method: 'GET', headers: hdr() });
+  function get(path, params) {
+    var qs = Object.keys(params || {}).map(function (k) {
+      var v = params[k];
+      if (v === undefined || v === null || v === '') return '';
+      return esc(k) + '=' + esc(v);
+    }).filter(Boolean).join('&');
+    return call('GET', path + (qs ? '?' + qs : ''));
   }
-
-  /* INSERT: POST /table  (minimal = object tunggal) */
-  function insert(table, row) {
-    return api('/' + table, { method: 'POST', headers: hdr('return=representation'), body: JSON.stringify(row) })
-      .then(function (rows) { return Array.isArray(rows) ? rows[0] : rows; });
-  }
-
-  /* UPDATE: PATCH /table?id=eq.<id> */
-  function patch(table, id, obj) {
-    return api('/' + table + '?id=eq.' + encodeURIComponent(id), { method: 'PATCH', headers: hdr('return=representation'), body: JSON.stringify(obj) })
-      .then(function (rows) { return Array.isArray(rows) ? rows[0] : rows; });
-  }
-
-  /* DELETE: DELETE /table?id=eq.<id> */
-  function remove(table, id) {
-    return api('/' + table + '?id=eq.' + encodeURIComponent(id), { method: 'DELETE', headers: hdr() });
-  }
-
-  /* daftar situs aktif untuk dropdown */
-  function listActiveSites() {
-    return list('sites', { select: ['site_id', 'label'], filters: [{ k: 'active', v: 'eq.true' }], order: 'label.asc' });
-  }
+  function post(path, obj) { return call('POST', path, obj || {}); }
 
   return {
-    base: BASE, key: KEY,
-    list: list, insert: insert, patch: patch, remove: remove,
-    listActiveSites: listActiveSites
+    /* dropdown situs */
+    listActiveSites: function () {
+      return get('/api/sitelist').then(function (d) { return d.sites || []; });
+    },
+    /* kirim klaim (via API, ada penegakan limit 2/hari) */
+    insert: function (table, row) {
+      if (table !== 'claims') return Promise.reject(Object.assign(new Error('tidak didukung'), { code: 'NS' }));
+      return post('/api/submit', row).then(function (d) { return d.row || []; });
+    },
+    /* lacak status + kuota user */
+    list: function (table, opts) {
+      if (table !== 'claims') return Promise.reject(Object.assign(new Error('tidak didukung'), { code: 'NS' }));
+      var u = (opts && opts.filters || []).filter(function (f) { return f.k === 'user_id'; })[0] || null;
+      var uid = u ? String(u.v).replace(/^eq\./, '') : '';
+      if (!uid) return Promise.reject(Object.assign(new Error('user_id wajib'), { code: 'BAD_USER' }));
+      return get('/api/track', { user_id: uid }).then(function (d) { return d.rows || []; });
+    },
+    /* kuota hari ini utk user */
+    today: function (userId) {
+      return get('/api/track', { user_id: userId }).then(function (d) { return { used: d.used, max: d.max }; });
+    }
   };
 })();

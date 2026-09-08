@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, rmSync, readdirSync } from 'fs';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
@@ -46,44 +46,76 @@ function checkHtml(name, html) {
 }
 
 /* ============================================================
-   1) WEB (deploy/) — dipakai sebagai isi repo → supaya yang
-   disajikan online bukan kode asli yang mudah dibaca.
+   1) WEB PUBLIK (deploy/) — form klaim + lacak + API serverless.
+   2) WEB MASTER (deploy-master/) — panel owner TERPISAH, situs
+      sendiri, terkoneksi ke database yang sama.
+   Api serverless disalin VERBATIM (tidak diobfuskasi).
+   Kunci Supabase TIDAK diinjeksi ke HTML — hanya dari env di Vercel.
    ============================================================ */
 const webSrc = join(root, 'web');
+const num = { PUBLIC: 0, MASTER: 0 };
+
+const INLINE = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+
+function copyDir(src, dst) {
+  if (!existsSync(src)) return;
+  mkdirSync(dst, { recursive: true });
+  const entries = readdirSync(src, { withFileTypes: true });
+  for (const e of entries) {
+    const s = join(src, e.name), d = join(dst, e.name);
+    if (e.isDirectory()) copyDir(s, d);
+    else copyFileSync(s, d);
+  }
+}
+
+function buildWebHtml(name, outName, outDir) {
+  const file = join(webSrc, name);
+  const html = readFileSync(file, 'utf8');
+  const obfHtml = html.replace(INLINE, (match, code) =>
+    `<script>${ob(code === undefined ? '' : code, PRESET_WEB)}</script>`);
+  writeFileSync(join(outDir, outName), obfHtml, 'utf8');
+  console.log('web  ' + name + ' -> ' + outName + ' (inline obfuscated)');
+  checkHtml(name, obfHtml);
+}
+
+/* --- 1a. SITUS PUBLIK --- */
 const outWeb = join(root, 'deploy');
 if (existsSync(outWeb)) rmSync(outWeb, { recursive: true, force: true });
 mkdirSync(outWeb, { recursive: true });
 
-const INLINE = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+buildWebHtml('index.html', 'index.html', outWeb); num.PUBLIC++;
 
-const SB_URL = process.env.SUPABASE_URL || '';
-const SB_KEY = process.env.SUPABASE_KEY || '';
-const CFG_INJECT =
-  `<script>window.__CFG__=window.__CFG__||{};window.__CFG__.SUPABASE_URL='${SB_URL}';window.__CFG__.SB_KEY='${SB_KEY}';</script>`;
-
-for (const name of ['index.html', 'dashboard.html']) {
-  const file = join(webSrc, name);
-  if (!existsSync(file)) continue;
-  let html = readFileSync(file, 'utf8');
-  html = html.replace('<script src="sb.js"></script>', CFG_INJECT + '<script src="sb.js"></script>');
-  const obfHtml = html.replace(INLINE, (match, code) => {
-    const obf = ob(code, PRESET_WEB);
-    return `<script>${obf}</script>`;
-  });
-  writeFileSync(join(outWeb, name), obfHtml, 'utf8');
-  console.log('web  ' + name + '  (inline script obfuscated)');
-  checkHtml(name, obfHtml);
+if (existsSync(join(webSrc, 'sb.js'))) {
+  writeFileSync(join(outWeb, 'sb.js'), ob(readFileSync(join(webSrc, 'sb.js'), 'utf8'), PRESET_WEB), 'utf8');
+  console.log('web  sb.js (obfuscated)');
 }
-
-const sbRaw = readFileSync(join(webSrc, 'sb.js'), 'utf8');
-writeFileSync(join(outWeb, 'sb.js'), ob(sbRaw, PRESET_WEB), 'utf8');
-console.log('web  sb.js (obfuscated)');
-
 copyFileSync(join(root, 'messageImage_1787629523742.jpg'), join(outWeb, 'messageImage_1787629523742.jpg'));
-mkdirSync(join(outWeb, 'supabase'), { recursive: true });
-copyFileSync(join(webSrc, 'supabase', 'setup.sql'), join(outWeb, 'supabase', 'setup.sql'));
-copyFileSync(join(webSrc, 'supabase', 'patch_rules.sql'), join(outWeb, 'supabase', 'patch_rules.sql'));
-console.log('web  asset jpg + supabase/setup.sql copied');
+copyFileSync(join(root, 'vercel.json'), join(outWeb, 'vercel.json'));
+copyDir(join(webSrc, 'supabase'), join(outWeb, 'supabase'));
+copyDir(join(root, 'api', 'public'), join(outWeb, 'api'));
+console.log('web  asset + supabase sql + api/ + vercel.json copied');
+
+/* --- 1b. SITUS MASTER (terpisah) --- */
+const outMaster = join(root, 'deploy-master');
+if (existsSync(outMaster)) rmSync(outMaster, { recursive: true, force: true });
+mkdirSync(outMaster, { recursive: true });
+
+buildWebHtml('master.html', 'index.html', outMaster); num.MASTER++;
+
+copyFileSync(join(root, 'messageImage_1787629523742.jpg'), join(outMaster, 'messageImage_1787629523742.jpg'));
+copyFileSync(join(root, 'vercel.json'), join(outMaster, 'vercel.json'));
+copyDir(join(webSrc, 'supabase'), join(outMaster, 'supabase'));
+copyDir(join(root, 'api', 'master'), join(outMaster, 'api'));
+console.log('master  asset + api/ + vercel.json copied');
+
+/* node --check semua file api yang disalin (harus tetap valid JS server) */
+for (const dir of [join(outWeb, 'api'), join(outMaster, 'api')]) {
+  if (!existsSync(dir)) continue;
+  for (const f of readdirSync(dir).filter(x => x.endsWith('.js'))) {
+    const p = join(dir, f);
+    if (!check('api/' + f, p)) num.PUBLIC = num.PUBLIC; // tetap dilaporkan saja
+  }
+}
 
 /* ============================================================
    2) EXTENSION (dist-extension/) — versi aman utk dipasang.

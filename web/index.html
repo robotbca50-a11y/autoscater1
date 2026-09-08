@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co https:; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>KLAIM BONUS SCATTER BANDAR 80</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -183,7 +183,8 @@
           <button type="button" data-v="5">x5<small>LIMA</small></button>
         </div>
       </div>
-      <input type="text" id="f_bot" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;height:1px;width:1px;opacity:0">
+      <input type="text" id="f_bot" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;height:1px;width:1px;opacity:0">
+      <input type="text" id="f_company" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;height:1px;width:1px;opacity:0">
       <button class="btn" id="btnSubmit"><span class="shine"></span>Kirim tiket scatter</button>
       <div class="link-home">Sudah pernah mengirim klaim? <b id="goTrack">Cek status klaim</b></div>
     </div>
@@ -210,6 +211,7 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var scatterSel = 3, busy = false, toastTimer = null, lastSubmit = 0;
+  var pageT = Date.now();
   var scBtn = Array.prototype.slice.call($('scSel').querySelectorAll('button'));
 
   function stage(name, active) { $('stage-' + name).classList.toggle('active', !!active); }
@@ -300,17 +302,36 @@
 
     busy = true; $('btnSubmit').disabled = true;
     lastSubmit = Date.now();
+
+    /* cek kuota hari ini dulu (batas 2 klaim/user/hari) */
+    SB.today(userId).then(function (t) {
+      if (t.used >= t.max) {
+        showToast('Anda sudah 2 kali claim hari ini. Coba kembali setelah ganti hari.', 'bad');
+        busy = false; $('btnSubmit').disabled = false;
+        return;
+      }
+      doSend(site, userId, tx, betNum);
+    }).catch(function () {
+      doSend(site, userId, tx, betNum);
+    });
+  });
+
+  function doSend(site, userId, tx, betNum) {
     SB.insert('claims', {
       site: site, user_id: userId, kode_tiket: tx,
       betting: betNum, scatter: scatterSel,
-      status: 'PENDING', label: 'ANTRI', detail: 'Menunggu antrian verifikasi', mode: 'WEB'
+      website: $('f_bot').value, company: $('f_company').value,
+      t: pageT
     }).then(function () {
       showToast('Tiket scatter diterima — sedang diverifikasi.', 'ok');
       $('f_user').value = ''; $('f_tx').value = ''; $('f_bet').value = '';
-    }).catch(function () {
-      showToast('Gagal mengirim klaim. Coba lagi.', 'bad');
+    }).catch(function (e) {
+      if (e && e.code === 'LIMIT_DAILY') { showToast('Anda sudah 2 kali claim hari ini. Coba kembali setelah ganti hari.', 'bad'); }
+      else if (e && e.code === 'SVC_HOURS') { showToast('Pendaftaran dibuka 00.00 s/d 23.50 WIB. Coba kembali setelah ganti hari.', 'bad'); }
+      else if (e && e.message) { showToast(e.message, 'bad'); }
+      else { showToast('Gagal mengirim klaim. Coba lagi.', 'bad'); }
     }).finally(function () { busy = false; $('btnSubmit').disabled = false; });
-  });
+  }
 
   $('btnTrack').addEventListener('click', function () {
     var u = $('t_user').value.trim();
