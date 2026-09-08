@@ -765,32 +765,7 @@ async function webClaimFillForm(formData, formUrl) {
         }
         chrome.tabs.onUpdated.addListener(listener);
       });
-      await sleep(1500);
-      const btnReady = () => {
-        try {
-          const b = document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
-            || Array.from(document.querySelectorAll('button')).find(x => /tambah|klaim/i.test((x.textContent || '').trim())) || null;
-          if (!b) return false;
-          const st = window.getComputedStyle(b);
-          if (st.display === 'none' || st.visibility === 'hidden') return false;
-          const r = b.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        } catch (_) { return false; }
-      };
-      let formReady = false;
-      for (let p = 0; p < 30 && !formReady; p++) {
-        try {
-          const [rr] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: btnReady });
-          formReady = !!(rr && rr.result);
-        } catch (_) {}
-        if (!formReady) await sleep(1500);
-      }
-      if (!formReady) {
-        lastMsg = 'Halaman belum siap: tombol +tambah data tidak kelihatan';
-        n = 3;
-        continue;
-      }
-      await sleep(400);
+      await sleep(2000);
       const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimAutomateForm, args: [formData] });
       const result = execResult?.result || null;
       if (result && typeof result === 'object') {
@@ -883,7 +858,7 @@ function webClaimAutomateForm(data) {
   }
   async function waitForToast(timeout) {
     const startTime = Date.now(); let lastContent = '';
-    while (Date.now() - startTime < (timeout || 8000)) {
+    while (Date.now() - startTime < (timeout || 12000)) {
       const section = document.querySelector('section[aria-label="Notifications alt+T"][tabindex="-1"][aria-live="polite"]');
       if (section) {
         const currentContent = (section.textContent || '').trim();
@@ -908,7 +883,7 @@ function webClaimAutomateForm(data) {
     await wait(1800);
     let openBtn = findOpenBtn();
     const tWaitBtn = Date.now();
-    while (!openBtn && Date.now() - tWaitBtn < 8000) { await wait(500); openBtn = findOpenBtn(); }
+    while (!openBtn && Date.now() - tWaitBtn < 12000) { await wait(500); openBtn = findOpenBtn(); }
     if (!openBtn) return { ok: false, message: 'Tombol tambah klaim tidak ditemukan' };
     openBtn.click(); await wait(900);
     const dialog = document.querySelector('[role="dialog"]') || null;
