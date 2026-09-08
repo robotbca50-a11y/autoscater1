@@ -770,7 +770,11 @@ async function webClaimFillForm(formData, formUrl) {
         try {
           const b = document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
             || Array.from(document.querySelectorAll('button')).find(x => /tambah|klaim/i.test((x.textContent || '').trim())) || null;
-          return !!(b && b.offsetParent !== null);
+          if (!b) return false;
+          const st = window.getComputedStyle(b);
+          if (st.display === 'none' || st.visibility === 'hidden') return false;
+          const r = b.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
         } catch (_) { return false; }
       };
       let formReady = false;
@@ -898,9 +902,13 @@ function webClaimAutomateForm(data) {
     const m = String(msg || '').toLowerCase();
     return !m.includes('gagal') && !m.includes('error') && !m.includes('tidak valid') && !m.includes('tidak ditemukan') && (m.includes('berhasil') || m.includes('sukses') || m.includes('tersimpan') || m.includes('masuk') || m.includes('klaim'));
   }
+  const findOpenBtn = () => document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+    || Array.from(document.querySelectorAll('button')).find(b => /tambah|klaim|new|create/i.test(b.textContent || '')) || null;
   return (async () => { try {
     await wait(1800);
-    const openBtn = document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue || Array.from(document.querySelectorAll('button')).find(b => /tambah|klaim|new|create/i.test(b.textContent || '')) || null;
+    let openBtn = findOpenBtn();
+    const tWaitBtn = Date.now();
+    while (!openBtn && Date.now() - tWaitBtn < 8000) { await wait(500); openBtn = findOpenBtn(); }
     if (!openBtn) return { ok: false, message: 'Tombol tambah klaim tidak ditemukan' };
     openBtn.click(); await wait(900);
     const dialog = document.querySelector('[role="dialog"]') || null;
