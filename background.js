@@ -707,7 +707,8 @@ async function webClaimProcess(claim) {
       site: String(claim.site || '').slice(0, 50),
       userId, kodeTiket: txId,
       betting: String(data.bet),
-      scatter: String(Math.min(Math.max(scNum, 3), 5))
+      scatter: String(Math.min(Math.max(scNum, 3), 5)),
+      hasTS: !!String(claim.hasTS || claim.has_ts || '').trim()
     };
     await webClaimPatch(claim.claimId, { status: 'INPUTTING', label: webClaimLabel('INPUTTING'), detail: 'Mengisi formulir #bonussmb/tickets...' });
 
@@ -786,135 +787,78 @@ async function webClaimFillForm(formData, formUrl) {
 
 function webClaimAutomateForm(data) {
   function wait(ms) { return new Promise(res => setTimeout(res, ms)); }
-  function selNumericInput(placeholders) {
-    const inputs = Array.from(document.querySelectorAll('input[inputmode="numeric"], input[type="text"]'));
-    for (const ph of placeholders) {
-      const el = inputs.find(i => (i.placeholder || '').toLowerCase() === String(ph).toLowerCase());
-      if (el) return el;
-    }
-    const last = inputs.filter(i => i.offsetParent !== null && (i.placeholder || '').trim() !== '');
-    return last.length ? last[last.length - 1] : (inputs[inputs.length - 1] || null);
-  }
-  function triggerInput(el, value) {
-    if (!el) return;
-    const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-    try { const desc = Object.getOwnPropertyDescriptor(proto, 'value'); if (desc && desc.set) desc.set.call(el, value); else el.value = value; } catch (_) { el.value = value; }
-    ['input', 'change'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true })));
-  }
-  async function waitForOptions(timeout) {
-    const start = Date.now();
-    while (Date.now() - start < (timeout || 500)) {
-      const opts = Array.from(document.querySelectorAll('[role="option"], .select2__option')).filter(o => o.offsetParent !== null);
-      if (opts.length > 0) return opts;
-      await wait(5);
-    }
-    return [];
-  }
-  async function pickOptionByText(container, preferredText) {
+  function triggerInput(el, value) { el.value = value; el.dispatchEvent(new Event("input", { bubbles: true })); }
+  async function waitForOptions(timeout) { if (timeout === undefined) timeout = 500; const start = Date.now(); while (Date.now() - start < timeout) { const opts = Array.from(document.querySelectorAll('[role="option"], .select2__option')).filter(o => o.offsetParent !== null); if (opts.length > 0) return opts; await wait(5); } return []; }
+  async function clickArrowDownAndSelect(ctrl) {
     try {
-      if (!container) return false;
-      container.click(); await wait(80);
-      const inner = container.querySelector('input, [role="combobox"]');
+      if (!ctrl) return false;
+      ctrl.click(); await wait(80);
+      const inner = ctrl.querySelector('input, [role="combobox"]');
       if (inner) { inner.focus(); inner.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await wait(120); }
-      else { container.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await wait(120); }
-      const opts = await waitForOptions(600);
-      if (!opts.length) return false;
-      let target = null;
-      if (preferredText) {
-        const kw = String(preferredText).toLowerCase();
-        target = opts.find(o => String(o.textContent || '').toLowerCase().includes(kw)) || null;
-      }
-      if (!target) target = opts[0];
-      target.click(); await wait(120);
-      return true;
-    } catch (e) { return false; }
+      else { ctrl.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await wait(120); }
+      const opts = await waitForOptions(500);
+      if (opts.length) { opts[0].click(); return true; }
+    } catch (e) { console.warn('clickArrowDownAndSelect gagal', e); }
+    return false;
   }
   async function fillScatter(scatterValue) {
-    try {
-      const xpath = '//*[@id="radix-«r9»"]/div[2]/form/div[8]/div[2]/div/div';
-      let container = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-      if (!container) {
-        const cbs = Array.from(document.querySelectorAll('[role="dialog"] div[role="combobox"], [role="dialog"] div > div[class*="select"]'));
-        if (!cbs.length) return false;
-        container = cbs[cbs.length - 1];
-      }
-      const ctrl = container.querySelector('div[role="combobox"], div > div') || container;
-      ctrl.click(); await wait(60);
-      const inner = ctrl.querySelector('input, [role="combobox"]');
-      if (inner) { inner.focus(); inner.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await wait(80); }
-      else { ctrl.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await wait(80); }
-      let opts = []; const t0 = Date.now();
-      while (Date.now() - t0 < 1800) {
-        opts = Array.from(document.querySelectorAll('[role="option"]')).filter(o => o.offsetParent !== null);
-        if (opts.length) break;
-        await wait(50);
-      }
-      const val = parseInt(String(scatterValue), 10);
-      const match = opts.find(o => String(o.textContent || '').trim() === String(val));
-      if (match) { match.click(); await wait(120); return true; }
-      if (val >= 3 && val <= 5 && opts.length > val - 3) { opts[val - 3].click(); await wait(120); return true; }
-      return false;
-    } catch (e) { return false; }
+    if (!scatterValue || !validateScatter(scatterValue)) { console.warn("Scatter value tidak valid:", scatterValue); return false; }
+    const xpath = '//*[@id="radix-«r9»"]/div[2]/form/div[8]/div[2]/div/div';
+    const container = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    if (!container) { console.warn("Scatter container tidak ditemukan"); return false; }
+    const ctrl = container.querySelector('div[role="combobox"], div > div');
+    if (!ctrl) { console.warn("Div Scatter interaktif tidak ditemukan"); return false; }
+    ctrl.click(); await wait(50);
+    const inner = ctrl.querySelector('input, [role="combobox"]');
+    if (inner) { inner.focus(); inner.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await wait(80); }
+    else { ctrl.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await wait(80); }
+    let opts = []; const t0 = Date.now();
+    while (Date.now() - t0 < 1500) { opts = Array.from(document.querySelectorAll('[role="option"]')).filter(function(o) { return o.offsetParent !== null; }); if (opts.length) break; await wait(50); }
+    let val = validateScatter(scatterValue);
+    if (!val) { console.warn("Scatter value invalid setelah validasi"); return false; }
+    const match = opts.find(function(o) { return o.textContent.trim() === String(val); });
+    if (match) { match.click(); await wait(100); return true; }
+    if (val >= 3 && val <= 5 && opts.length > val - 3) { opts[val - 3].click(); await wait(100); return true; }
+    console.warn("Tidak ada option scatter ditemukan untuk", val); await wait(100); return false;
   }
-  async function waitForToast(timeout) {
-    const startTime = Date.now(); let lastContent = '';
-    while (Date.now() - startTime < (timeout || 12000)) {
-      const section = document.querySelector('section[aria-label="Notifications alt+T"][tabindex="-1"][aria-live="polite"]');
-      if (section) {
-        const currentContent = (section.textContent || '').trim();
-        if (currentContent && currentContent !== lastContent) {
-          lastContent = currentContent;
-          await new Promise(r => setTimeout(r, 150));
-          const finalContent = (section.textContent || '').trim();
-          if (finalContent) return finalContent;
-        }
-      }
-      await new Promise(r => setTimeout(r, 200));
-    }
-    return null;
-  }
+  function isFilled(v) { return v !== undefined && v !== null && v !== ''; }
+  function validateScatter(value) { if (!isFilled(value)) return null; const str = value.toString().trim(); if (!/^\d+$/.test(str)) return null; const n = parseInt(str, 10); if (n >= 3) return Math.min(n, 5); return null; }
+  async function waitForToastSimple(timeout) { if (timeout === undefined) timeout = 12000; const startTime = Date.now(); let lastContent = ''; while (Date.now() - startTime < timeout) { const section = document.querySelector('section[aria-label="Notifications alt+T"][tabindex="-1"][aria-live="polite"]'); if (section) { const currentContent = section.textContent?.trim(); if (currentContent && currentContent !== lastContent) { lastContent = currentContent; await new Promise(r => setTimeout(r, 100)); const finalContent = section.textContent?.trim(); if (finalContent) return finalContent; } } await new Promise(r => setTimeout(r, 200)); } return null; }
   function isLikelySuccess(msg) {
     const m = String(msg || '').toLowerCase();
     return !m.includes('gagal') && !m.includes('error') && !m.includes('tidak valid') && !m.includes('tidak ditemukan') && (m.includes('berhasil') || m.includes('sukses') || m.includes('tersimpan') || m.includes('masuk') || m.includes('klaim'));
   }
-  const findOpenBtn = () => document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
-    || Array.from(document.querySelectorAll('button')).find(b => /tambah|klaim|new|create/i.test(b.textContent || '')) || null;
-  return (async () => { try {
-    await wait(1800);
-    let openBtn = findOpenBtn();
-    const tWaitBtn = Date.now();
-    while (!openBtn && Date.now() - tWaitBtn < 12000) { await wait(500); openBtn = findOpenBtn(); }
-    if (!openBtn) return { ok: false, message: 'Tombol tambah klaim tidak ditemukan' };
-    openBtn.click(); await wait(900);
-    const dialog = document.querySelector('[role="dialog"]') || null;
-    const form = (dialog && dialog.querySelector('form')) || document.querySelector('form') || null;
-    if (!form) return { ok: false, message: 'Modal form tidak terbuka' };
-
+  return (async () => {
+    await wait(1500);
+    let openBtn = document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    const t0open = Date.now();
+    while (!openBtn && Date.now() - t0open < 10000) { await wait(500); openBtn = document.evaluate('//*[@id="root"]/div/main/div/div[1]/button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; }
+    if (openBtn) openBtn.click();
+    await wait(800);
     const situsDropdown = document.evaluate('//*[@id="radix-«r9»"]/div[2]/form/div[1]/div[2]/div', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-    if (situsDropdown) await pickOptionByText(situsDropdown, data.site || '');
-    await wait(120);
+    if (situsDropdown) await clickArrowDownAndSelect(situsDropdown);
+    await wait(100);
     const tipeDropdown = document.evaluate('//*[@id="radix-«r9»"]/div[2]/form/div[2]/div[2]/div', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-    if (tipeDropdown) await pickOptionByText(tipeDropdown, '');
-    await wait(120);
-
-    const userInput = form.querySelector('input[placeholder="User ID"]') || dialog.querySelector('input[placeholder="User ID"]');
-    if (userInput) { triggerInput(userInput, data.userId); await wait(100); }
-    const kodeInput = form.querySelector('input[placeholder="Kode Tiket"]') || dialog.querySelector('input[placeholder="Kode Tiket"]');
+    if (tipeDropdown) await clickArrowDownAndSelect(tipeDropdown);
+    await wait(100);
+    const userInput = document.querySelector('input[placeholder="User ID"]');
+    const userIdVal = data.hasTS ? data.userId + ' TS' : data.userId;
+    if (userInput) { triggerInput(userInput, userIdVal); await wait(100); }
+    const kodeInput = document.querySelector('input[placeholder="Kode Tiket"]');
     if (kodeInput) { triggerInput(kodeInput, data.kodeTiket); await wait(100); }
-    const bettingInput = selNumericInput(['#######', 'Betting', 'Bet', 'Nominal']);
-    if (bettingInput) { triggerInput(bettingInput, data.betting); await wait(120); }
-
-    const scatterOk = await fillScatter(data.scatter);
-    if (!scatterOk) return { ok: false, message: 'Scatter tidak valid atau tidak ditemukan' };
+    const bettingInput = document.querySelector('input[type="text"][inputmode="numeric"][placeholder="#######"]');
+    if (bettingInput) { triggerInput(bettingInput, data.betting); await wait(100); } else { console.warn("Input bettingan tidak ditemukan"); }
     await wait(150);
-
-    const saveBtn = dialog.querySelector('button[data-slot="button"]') || Array.from(form.querySelectorAll('button')).pop() || null;
-    if (!saveBtn) return { ok: false, message: 'Tombol simpan tidak ditemukan' };
-    saveBtn.click();
-    const toastMessage = await waitForToast();
-    const finalMessage = toastMessage || 'Toast tidak terdeteksi';
+    const scatterOk = await fillScatter(data.scatter);
+    if (!scatterOk) {
+      console.warn("fillScatter gagal, batal submit");
+      return { ok: false, message: "Scatter tidak valid atau tidak ditemukan" };
+    }
+    const saveBtn = document.querySelector('button[data-slot="button"]');
+    if (saveBtn) saveBtn.click();
+    const toastMessage = await waitForToastSimple();
+    const finalMessage = toastMessage || "Toast tidak terdeteksi";
     return { ok: isLikelySuccess(finalMessage), message: finalMessage };
-  } catch (errFill) { return { ok: false, message: 'Script form gagal: ' + String((errFill && errFill.message) || errFill) }; }
   })();
 }
 
@@ -2364,7 +2308,8 @@ async function sbwProcessOne(row) {
       site: cfg.form_site_value || row.site,
       userId, kodeTiket: txId,
       betting: String(data.bet),
-      scatter: String(Math.min(Math.max(scNum, 3), 5))
+      scatter: String(Math.min(Math.max(scNum, 3), 5)),
+      hasTS: !!String(row.has_ts || row.hasTS || '').trim()
     };
     await sbwPatchClaim(id, { status: 'INPUTTING', label: 'INPUT WEB BONUS', detail: 'Mengisi formulir ' + cfg.label + '...' });
     processLog(txId, 'SBW_INPUTTING', { target: cfg.bonus_url }, 'CLOUD');
