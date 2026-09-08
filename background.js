@@ -750,7 +750,8 @@ async function webClaimDrain() {
   }
 }
 
-/* Isi form klaim web bonus (bonussmb.com/tickets) — port dari bg-secure.js (AUTO RELAX). */
+/* Isi form klaim web bonus (bonussmb.com/tickets) — inject fill_claim_page.js
+   (port dari bg-secure.js AUTO RELAX) + remote lewat message, bukan executeScript func. */
 async function webClaimFillForm(formData, formUrl) {
   const url = formUrl || WEB_CLAIM_FORM_URL;
   const fillUrl = url + (String(url).indexOf('?') >= 0 ? '&' : '?') + 'tm_fill=1';
@@ -767,8 +768,14 @@ async function webClaimFillForm(formData, formUrl) {
         chrome.tabs.onUpdated.addListener(listener);
       });
       await sleep(2000);
-      const [execResult] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: webClaimAutomateForm, args: [formData] });
-      const result = execResult?.result || null;
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['fill_claim_page.js'] });
+      } catch (_) {}
+      await sleep(300);
+      const result = await Promise.race([
+        chrome.tabs.sendMessage(tab.id, { action: 'fillClaim', data: formData }),
+        sleep(75000).then(() => ({ ok: false, message: 'Form tidak merespons (timeout 75s)' }))
+      ]);
       if (result && typeof result === 'object') {
         if (result.ok) return result;
         lastMsg = result.message || 'Form tidak merespons';

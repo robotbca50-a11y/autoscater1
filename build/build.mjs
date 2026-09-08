@@ -90,7 +90,7 @@ console.log('web  asset jpg + supabase/setup.sql copied');
    ============================================================ */
 const extFiles = [
   'background.js', 'app.js', 'popup.js', 'content.js', 'detail_processor.js',
-  'tickets_monitor.js', 'bridge-scatter.js', 'web_claim_bridge.js', 'sb.js',
+  'tickets_monitor.js', 'bridge-scatter.js', 'web_claim_bridge.js', 'fill_claim_page.js', 'sb.js',
   'lib/constants.js', 'lib/utils.js', 'lib/parser.js', 'lib/token.js',
   'app.html', 'app.css', 'manifest.json', 'web_claim_dashboard.html',
   'icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'icons/icon128.png',
